@@ -1,0 +1,309 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>PRASHANT CITY 3D</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;overflow:hidden;font-family:Arial;touch-action:none}
+#hud{position:absolute;top:8px;left:8px;color:white;background:#111b;padding:9px;border-radius:10px}
+#controls{position:absolute;bottom:20px;left:15px;right:15px;display:flex;justify-content:space-between;align-items:end;pointer-events:none}
+button{border:2px solid white;border-radius:15px;background:#172bce;color:white;padding:12px;font-weight:bold;font-size:13px;pointer-events:auto}
+#stick{width:115px;height:115px;border-radius:50%;background:#2229;border:2px solid white;position:relative;pointer-events:auto;touch-action:none}
+#knob{width:43px;height:43px;background:#fff;border-radius:50%;position:absolute;left:34px;top:34px}
+#actions{display:flex;flex-direction:column;gap:7px;align-items:end}
+#context{background:#00a85a}
+#garage{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#17202e;color:white;padding:18px;border-radius:15px;display:none;width:85%;max-width:330px;text-align:center}
+#garage button{margin:4px;background:#1769aa}
+#close{background:#b22}
+</style>
+</head>
+<body>
+<div id="hud">
+ <b>PRASHANT CITY</b><br>
+ ❤️ Health: 100<br>
+ ⭐ Mission: Explore City<br>
+ <span id="vehicle">On Foot</span>
+</div>
+
+<div id="controls">
+ <div id="stick"><div id="knob"></div></div>
+ <div id="actions">
+  <button id="look">👁 CAMERA</button>
+  <button id="context" style="display:none">ENTER</button>
+  <button id="jump">⬆ JUMP</button>
+  <button id="garageBtn">🚘 GARAGE</button>
+  <button id="exit" style="display:none">EXIT</button>
+ </div>
+</div>
+
+<div id="garage">
+ <h2>🚘 VEHICLE GARAGE</h2>
+ <div id="vehicles"></div>
+ <button id="close">CLOSE</button>
+</div>
+
+<script type="module">
+import * as THREE from
+'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color('#83c9ef');
+scene.fog=new THREE.Fog('#83c9ef',100,650);
+
+const camera=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,.1,1200);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+renderer.shadowMap.enabled=true;
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xffffff,0x555555,2));
+const sun=new THREE.DirectionalLight(0xffffff,2);
+sun.position.set(100,150,80);
+scene.add(sun);
+
+function box(parent,x,y,z,w,h,d,color){
+ const m=new THREE.Mesh(
+  new THREE.BoxGeometry(w,h,d),
+  new THREE.MeshStandardMaterial({color})
+ );
+ m.position.set(x,y,z);
+ m.castShadow=true;
+ m.receiveShadow=true;
+ parent.add(m);
+ return m;
+}
+
+// CITY
+box(scene,0,-.2,0,1000,.3,1000,'#47894c');
+box(scene,0,0,0,1000,.15,35,'#333333');
+box(scene,0,0,100,1000,.15,25,'#333333');
+box(scene,0,0,-100,1000,.15,25,'#333333');
+box(scene,0,0,0,30,.15,1000,'#333333');
+
+const buildings=[];
+for(let x=-440;x<=440;x+=70){
+ for(let z=-450;z<=450;z+=90){
+  if(Math.abs(z)<45||Math.abs(z-100)<30||
+  Math.abs(z+100)<30)continue;
+  const h=20+Math.random()*75;
+  const b=box(scene,x,h/2,z,35,h,35,
+  ['#d6d6d6','#e7cba7','#9ca8bd','#c2c2c2'][Math.floor(Math.random()*4)]);
+  buildings.push(b);
+ }
+}
+
+// HOUSE
+box(scene,35,5,10,20,10,20,'#e5c49b');
+const door=box(scene,35,2.5,-.15,3,5,.3,'#663311');
+
+// PLAYER
+const player=new THREE.Group();
+scene.add(player);
+box(player,0,1.5,0,1,1.5,.55,'#1676c5');
+const head=new THREE.Mesh(
+ new THREE.SphereGeometry(.4,16,16),
+ new THREE.MeshStandardMaterial({color:'#dca77e'})
+);
+head.position.y=2.55;
+player.add(head);
+box(player,-.3,.5,0,.25,1,.25,'#202d55');
+box(player,.3,.5,0,.25,1,.25,'#202d55');
+player.position.set(0,0,15);
+
+// VEHICLES
+const types=[
+ ['Car','#e52d35'],['Bullet Bike','#e0d329'],
+ ['Tractor','#238b42'],['Monster Truck','#a32cbd'],
+ ['Jeep','#e5a52b'],['Helicopter','#477caa']
+];
+let vehicle=null,vehicleType='',doorOpen=false;
+const garage=document.getElementById('garage');
+const vehicleList=document.getElementById('vehicles');
+
+function makeVehicle(type,color){
+ const g=new THREE.Group();
+ const mat=new THREE.MeshStandardMaterial({color});
+ if(type==='Bullet Bike'){
+  box(g,0,1,0,1,1.1,2.8,color);
+  for(const z of [-1.2,1.2]){
+   const w=new THREE.Mesh(new THREE.TorusGeometry(.55,.13,8,20),
+   new THREE.MeshStandardMaterial({color:'#171717'}));
+   w.position.set(0,.55,z);g.add(w);
+  }
+ }else if(type==='Helicopter'){
+  box(g,0,1,0,2.5,1.4,4,color);
+  box(g,0,2.2,0,.2,.1,13,'#222222');
+  box(g,0,1,-3, .2,.2,2,'#333333');
+ }else{
+  const size=type==='Monster Truck'?1.6:1;
+  box(g,0,1.2,0,3.5*size,1.2,5,color);
+  box(g,0,2.1,0,2.7*size,1.1,2.5,'#81c6df');
+  for(const x of [-1.6*size,1.6*size]){
+   for(const z of [-1.7,1.7]){
+    const w=new THREE.Mesh(
+     new THREE.CylinderGeometry(.65*size,.65*size,.4,16),
+     new THREE.MeshStandardMaterial({color:'#171717'})
+    );
+    w.rotation.z=Math.PI/2;
+    w.position.set(x,.65*size,z);g.add(w);
+   }
+  }
+ }
+ return g;
+}
+
+function spawn(type,color){
+ if(vehicle)scene.remove(vehicle);
+ vehicle=makeVehicle(type,color);
+ vehicle.position.set(12,0,12);
+ scene.add(vehicle);
+ vehicleType=type;
+ garage.style.display='none';
+}
+
+types.forEach(([name,color])=>{
+ const b=document.createElement('button');
+ b.textContent=name;
+ b.onclick=()=>spawn(name,color);
+ vehicleList.appendChild(b);
+});
+
+document.getElementById('garageBtn').onclick=()=>{
+ garage.style.display='block';
+};
+document.getElementById('close').onclick=()=>{
+ garage.style.display='none';
+};
+
+// TOUCH JOYSTICK
+let joyX=0,joyY=0,joyActive=false;
+const stick=document.getElementById('stick');
+const knob=document.getElementById('knob');
+
+function joystick(e){
+ const r=stick.getBoundingClientRect();
+ let x=e.clientX-r.left-r.width/2;
+ let y=e.clientY-r.top-r.height/2;
+ const len=Math.hypot(x,y);
+ if(len>35){x=x/len*35;y=y/len*35;}
+ joyX=x/35;joyY=y/35;
+ knob.style.left=(34+x)+'px';
+ knob.style.top=(34+y)+'px';
+}
+stick.addEventListener('pointerdown',e=>{
+ joyActive=true;stick.setPointerCapture(e.pointerId);joystick(e);
+});
+stick.addEventListener('pointermove',e=>{
+ if(joyActive)joystick(e);
+});
+function stopJoy(){
+ joyActive=false;joyX=0;joyY=0;
+ knob.style.left='34px';knob.style.top='34px';
+}
+stick.addEventListener('pointerup',stopJoy);
+stick.addEventListener('pointercancel',stopJoy);
+
+// CAMERA LOOK
+let yaw=0,pitch=.3,lastX=0,lastY=0;
+renderer.domElement.addEventListener('pointerdown',e=>{
+ lastX=e.clientX;lastY=e.clientY;
+ renderer.domElement.setPointerCapture(e.pointerId);
+});
+renderer.domElement.addEventListener('pointermove',e=>{
+ if(e.buttons){
+  yaw-=(e.clientX-lastX)*.008;
+  pitch=Math.max(-.3,Math.min(.8,pitch+(e.clientY-lastY)*.004));
+ }
+ lastX=e.clientX;lastY=e.clientY;
+});
+
+// JUMP
+let jumpSpeed=0;
+document.getElementById('jump').onclick=()=>{
+ if(!vehicle&&player.position.y<.05)jumpSpeed=.23;
+};
+
+// NEARBY ACTION BUTTON
+const context=document.getElementById('context');
+const exitBtn=document.getElementById('exit');
+let nearby='';
+
+function distance(a,b){
+ return Math.hypot(a.x-b.x,a.z-b.z);
+}
+
+context.onclick=()=>{
+ if(nearby==='car'||nearby==='bike'){
+  if(!vehicle)return;
+  player.position.copy(vehicle.position);
+  player.visible=false;
+  exitBtn.style.display='block';
+  document.getElementById('vehicle').textContent=vehicleType;
+ }else if(nearby==='door'){
+  doorOpen=!doorOpen;
+  door.rotation.y=doorOpen?Math.PI/2:0;
+  door.position.x=doorOpen?37:35;
+  context.textContent=doorOpen?'CLOSE DOOR':'OPEN DOOR';
+ }
+};
+
+exitBtn.onclick=()=>{
+ player.position.copy(vehicle.position);
+ player.position.z+=5;
+ player.visible=true;
+ exitBtn.style.display='none';
+ document.getElementById('vehicle').textContent='On Foot';
+};
+
+// MAIN GAME
+function animate(){
+ requestAnimationFrame(animate);
+
+ let target=vehicle&&!player.visible?vehicle:player;
+ let angle=yaw;
+
+ if(!vehicle||player.visible){
+  player.rotation.y=angle;
+  player.position.x+=Math.sin(angle)*(-joyY)*.18;
+  player.position.z+=Math.cos(angle)*(-joyY)*.18;
+  player.position.x+=Math.cos(angle)*joyX*.16;
+  player.position.z-=Math.sin(angle)*joyX*.16;
+  jumpSpeed-=.012;
+  player.position.y=Math.max(0,player.position.y+jumpSpeed);
+  if(player.position.y===0)jumpSpeed=0;
+ }else if(vehicle){
+  vehicle.position.x+=Math.sin(vehicle.rotation.y)*(-joyY)*.3;
+  vehicle.position.z+=Math.cos(vehicle.rotation.y)*(-joyY)*.3;
+  vehicle.rotation.y+=joyX*.035;
+ }
+
+ if(vehicle&&player.visible&&distance(player.position,vehicle.position)<9){
+  nearby='car';context.textContent='ENTER '+vehicleType;context.style.display='block';
+ }else if(distance(player.position,new THREE.Vector3(35,0,10))<12&&player.visible){
+  nearby='door';context.textContent=doorOpen?'CLOSE DOOR':'OPEN DOOR';context.style.display='block';
+ }else{
+  nearby='';context.style.display='none';
+ }
+
+ const camX=target.position.x-Math.sin(yaw)*12;
+ const camZ=target.position.z-Math.cos(yaw)*12;
+ const camY=target.position.y+5+pitch*5;
+ camera.position.lerp(new THREE.Vector3(camX,camY,camZ),.12);
+ camera.lookAt(target.position.x,target.position.y+1,target.position.z);
+
+ renderer.render(scene,camera);
+}
+animate();
+
+addEventListener('resize',()=>{
+ camera.aspect=innerWidth/innerHeight;
+ camera.updateProjectionMatrix();
+ renderer.setSize(innerWidth,innerHeight);
+});
+</script>
+</body>
+  </html>
+  
